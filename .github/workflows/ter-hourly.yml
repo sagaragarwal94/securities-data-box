@@ -1,0 +1,32 @@
+name: ter-hourly
+on:
+  schedule:
+    - cron: "20 * * * *"      # the upstream TER tracker updates hourly
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: data-release
+  cancel-in-progress: false
+jobs:
+  ter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch TER
+        run: PYTHONPATH=src python -m mfpipe --out out ter
+      - name: Publish only if changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || { echo "no release yet; run nav-daily first"; exit 0; }
+          mkdir -p prev
+          gh release download data-latest -p ter.csv -D prev 2>/dev/null || true
+          if [ -f prev/ter.csv ] && cmp -s prev/ter.csv out/ter.csv; then echo "TER unchanged"; exit 0; fi
+          gh release download data-latest -p scheme_snapshot.csv -D out
+          PYTHONPATH=src python -m mfpipe --out out match
+          gh release upload data-latest out/ter.csv out/nsdl_map_candidates.csv --clobber

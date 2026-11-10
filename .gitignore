@@ -1,0 +1,7 @@
+out/
+work/
+*.db
+*.zst
+*.sql
+__pycache__/
+.venv/

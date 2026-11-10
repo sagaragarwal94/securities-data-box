@@ -1,0 +1,48 @@
+name: nav-daily
+on:
+  schedule:
+    - cron: "30 20 * * 1-6"   # 02:00 IST Tue-Sun: AMFI has published the previous day by then
+    - cron: "0 22 * * 0"      # Sunday: wider 90-day re-check, AMFI backfills NAVs
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of NAV history to re-fetch"
+        default: "7"
+permissions:
+  contents: write
+concurrency:
+  group: data-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: PYTHONPATH=src python -m unittest discover -s tests
+      - name: Pick window
+        id: win
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then d="${{ inputs.days }}";
+          elif [ "${{ github.event.schedule }}" = "0 22 * * 0" ]; then d=90; else d=7; fi
+          echo "days=$d" >> "$GITHUB_OUTPUT"
+      - name: Fetch NAV (AMFI)
+        run: PYTHONPATH=src python -m mfpipe --out out nav --days ${{ steps.win.outputs.days }}
+      - name: Fetch TER
+        run: PYTHONPATH=src python -m mfpipe --out out ter
+      - name: Fetch seed attributes
+        run: PYTHONPATH=src python -m mfpipe --out out attrs
+      - name: Build NSDL map candidates
+        run: PYTHONPATH=src python -m mfpipe --out out match
+      - name: Publish to rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || \
+            gh release create data-latest --title "data-latest" --notes "Rolling data artifacts. Overwritten by CI." --latest=false
+          date -u +%FT%TZ > out/_generated_at.txt
+          gh release upload data-latest out/* --clobber
