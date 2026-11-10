@@ -5,3 +5,5 @@ work/
 *.sql
 __pycache__/
 .venv/
+.env
+backups/

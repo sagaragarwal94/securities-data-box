@@ -25,3 +25,16 @@ Local run / tests:
     PYTHONPATH=src python -m mfpipe --out out nav --days 3
 
 Upstream licences: AMFI data is public; both GitHub sources are MIT.
+
+
+## One-command sync into Postgres (run on your own server)
+
+    cp .env.example .env     # then edit; .env is git-ignored and must NEVER be committed
+    PYTHONPATH=src python -m mfpipe sync --apply-migration     # first run: migration, backup, NAV history, full load
+    PYTHONPATH=src python -m mfpipe sync                       # daily
+    PYTHONPATH=src python -m mfpipe sync --mode ter            # hourly TER refresh only
+
+`sync` fetches AMFI/TER/attribute data itself (no GitHub release needed), then calls the internal loader scripts in
+`MF_SQL_DIR`. Requirements on that machine: Python 3.9+, `psql`, and `zstd` (history backfill only). The database
+connection comes from `.env` or the environment (`DATABASE_URL`, or `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`);
+it is never stored in this public repo and passwords are masked in all output. `--dry-run` fetches without loading.
